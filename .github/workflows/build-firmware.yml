@@ -1,13 +1,18 @@
-# 使用 arduino-cli 在 Ubuntu 上编译 ESP32-S3 固件，并上传 .bin 产物。
-# 板级选项与 README 中「ESP32S3 Dev Module + 16M Flash + 3MB APP + OPI PSRAM + Hardware CDC」一致。
+# 编译 ESP32-S3 固件；每次 CI 用 esptool 生成 desktop_widget.ino.merged.bin（arduino-cli 默认不生成）。
+# 推送 v* 标签时额外打 zip 并发布 GitHub Release。
 
 name: Build firmware
 
 on:
   push:
     branches: [main, master]
+    tags:
+      - 'v*'
   pull_request:
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 concurrency:
   group: build-${{ github.workflow }}-${{ github.ref }}
@@ -22,6 +27,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Sync FW_VERSION from git tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          set -euxo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          sed -i 's/^#define FW_VERSION .*/#define FW_VERSION "'"${VERSION}"'"/' web_config.h
+          grep '#define FW_VERSION' web_config.h
+
       - name: Install arduino-cli
         uses: arduino/setup-arduino-cli@v2
         with:
@@ -33,7 +46,6 @@ jobs:
           arduino-cli version
           arduino-cli config init \
             --additional-urls https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
-          # arduino-cli 1.2 起默认禁止 --git-url / --zip-path，需显式开启（仅 CI 使用）
           arduino-cli config set library.enable_unsafe_install true
           arduino-cli core update-index
           arduino-cli core install esp32:esp32
@@ -44,9 +56,7 @@ jobs:
             "ArduinoJson" \
             "SensorLib" \
             "XPowersLib"
-          # LVGL：Arduino 库管理器当前为 v9.x；若需与本地完全一致的 9.5 可在本步骤改为固定 @ 版本或 git 安装
           arduino-cli lib install "lvgl"
-          # 触摸 I2C 总线：与微雪资料包中 Arduino_DriveBus 接口一致（含 Arduino_DriveBus_Library.h）
           arduino-cli lib install --git-url https://github.com/yuttapichai/Arduino_DriveBus
 
       - name: Compile sketch
@@ -62,9 +72,70 @@ jobs:
             "${GITHUB_WORKSPACE}"
           ls -la "${GITHUB_WORKSPACE}/build-ci"
 
+      # arduino-cli / 默认 ESP 编译链不会输出 *.merged.bin，此处用 esptool 生成同名整片镜像
+      - name: Create merged flash image (desktop_widget.ino.merged.bin)
+        run: |
+          set -euxo pipefail
+          pip install "esptool>=4.6,<5"
+          cd "${GITHUB_WORKSPACE}/build-ci"
+          python3 -m esptool merge_bin --chip esp32s3 \
+            -o desktop_widget.ino.merged.bin \
+            --flash_mode dio --flash_freq 80m --flash_size 16MB \
+            --pad-to-size 16MB \
+            0x0 desktop_widget.ino.bootloader.bin \
+            0x8000 desktop_widget.ino.partitions.bin \
+            0x10000 desktop_widget.ino.bin
+          ls -la desktop_widget.ino.merged.bin
+
       - name: Upload firmware artifacts
         uses: actions/upload-artifact@v4
         with:
           name: desktop_widget-esp32s3-bin
           path: build-ci/*.bin
           if-no-files-found: error
+
+  release:
+    needs: build
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: desktop_widget-esp32s3-bin
+          path: release-staging
+
+      - name: Pack release zip
+        run: |
+          set -euxo pipefail
+          TAG="${{ github.ref_name }}"
+          ls -la release-staging
+          mkdir -p pack
+          cp -v release-staging/*.bin pack/
+          cp -v "${GITHUB_WORKSPACE}/.github/RELEASE_FLASH.md" pack/README_FLASH.md
+          ( cd pack && zip -r "${GITHUB_WORKSPACE}/desktop_widget-firmware-${TAG}.zip" . )
+          ls -la "${GITHUB_WORKSPACE}/desktop_widget-firmware-${TAG}.zip"
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }} 桌面摆件固件
+          generate_release_notes: true
+          body: |
+            **烧录（整片 16MB）**
+            - 使用 **`desktop_widget.ino.merged.bin`**：从地址 **0x0** 烧录（由 CI 用 esptool 合并 bootloader / partitions / 应用并 padding，与 IDE 是否导出 merged 无关）。
+            - **Arduino IDE / `arduino-cli upload`**：仍可按板子选项自动烧录。
+            - 压缩包内另有分拆的 `.bin` 及 `README_FLASH.md`；设备 Web 显示的版本号与本次标签一致（编译前已写入 `FW_VERSION`）。
+          files: |
+            release-staging/*.bin
+            desktop_widget-firmware-${{ github.ref_name }}.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -36,11 +36,18 @@
 3. **PSRAM：OPI**（全帧缓冲与旋转缓冲使用 PSRAM）  
 4. **USB CDC：Enabled**（串口日志）
 
-### CI 自动编译（GitHub Actions）
+### CI 自动编译与发版（GitHub Actions）
 
-推送或 Pull Request 到 `main` / `master` 时，会运行 [`.github/workflows/build-firmware.yml`](.github/workflows/build-firmware.yml)：在 Ubuntu 上用 **arduino-cli** 安装 ESP32 内核与依赖库、按与上文一致的 **FQBN** 编译工程，并在 Actions 产物中提供 **`build-ci` 目录下的 `.bin` 文件**（Artifacts 名称：`desktop_widget-esp32s3-bin`）。
+[`.github/workflows/build-firmware.yml`](.github/workflows/build-firmware.yml) 行为如下：
 
-触摸库 **Arduino_DriveBus** 通过 `arduino-cli lib install --git-url` 从 Git 安装（`yuttapichai/Arduino_DriveBus`，含 `Arduino_DriveBus_Library.h`）。arduino-cli 1.2 起默认关闭该方式，workflow 内已执行 `arduino-cli config set library.enable_unsafe_install true`。若与微雪资料包不一致导致编译失败，可改为你的 fork 的 `--git-url`，或改为在步骤里 `git clone` 到 `~/Arduino/libraries/Arduino_DriveBus`。
+| 触发条件 | 结果 |
+|----------|------|
+| `push` / `pull_request` 到 `main`、`master` | 编译 + **esptool 生成 `desktop_widget.ino.merged.bin`**；Artifacts：`desktop_widget-esp32s3-bin`（内含全部 `.bin`，含 merged）。 |
+| `push` 标签 **`v*`**（例：`v1.0.1`） | 同上编译；并在 **GitHub Releases** 发布同名 Release，附带所有 `.bin`、**`desktop_widget-firmware-<标签>.zip`**（内含 `README_FLASH.md`）。CI 在编译前会把 `web_config.h` 里的 **`FW_VERSION`** 改成与标签一致（去掉前缀 `v`）。 |
+
+触摸库 **Arduino_DriveBus** 通过 `arduino-cli lib install --git-url` 安装（`yuttapichai/Arduino_DriveBus`）。arduino-cli 1.2 起须 `arduino-cli config set library.enable_unsafe_install true`（workflow 已配置）。若与微雪资料包不一致，可改 `--git-url` 或改为 `git clone` 到 `~/Arduino/libraries/Arduino_DriveBus`。
+
+**发版步骤示例**：先改代码 → 提交 → 打标签并推送：`git tag v1.0.1 && git push origin v1.0.1`。下载 Release 或 Actions 产物后，**整片烧录**请用 **`desktop_widget.ino.merged.bin`**（从 **0x0**）：由 CI 在编译后用 **esptool** 合并生成；**Arduino / arduino-cli 默认不会产出该文件**，本地只看到 `bootloader` / `partitions` / `*.ino.bin` 是正常的。详见 [`.github/RELEASE_FLASH.md`](.github/RELEASE_FLASH.md)。
 
 ### 依赖库（库管理器 / 手动）
 
@@ -78,7 +85,8 @@
 
 ## 固件版本
 
-Web 状态页与逻辑中的版本字符串以 `web_config.h` 里的 **`FW_VERSION`** 为准；修改后重新编译烧录即可。
+- 日常开发：在 `web_config.h` 中修改 **`#define FW_VERSION "…"`**，重新编译烧录后，Web 状态页会显示该字符串。  
+- **GitHub 发版**：推送 **`v主版本.次版本.修订`** 标签时，CI 会把 `FW_VERSION` 覆盖为标签去掉 `v` 后的版本再编译，保证设备显示与 Release 一致。
 
 ## 许可
 
