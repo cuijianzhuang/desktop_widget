@@ -36,6 +36,12 @@
 3. **PSRAM：OPI**（全帧缓冲与旋转缓冲使用 PSRAM）  
 4. **USB CDC：Enabled**（串口日志）
 
+### CI 自动编译（GitHub Actions）
+
+推送或 Pull Request 到 `main` / `master` 时，会运行 [`.github/workflows/build-firmware.yml`](.github/workflows/build-firmware.yml)：在 Ubuntu 上用 **arduino-cli** 安装 ESP32 内核与依赖库、按与上文一致的 **FQBN** 编译工程，并在 Actions 产物中提供 **`build-ci` 目录下的 `.bin` 文件**（Artifacts 名称：`desktop_widget-esp32s3-bin`）。
+
+触摸库 **Arduino_DriveBus** 当前从 Git 安装（`yuttapichai/Arduino_DriveBus`，接口含 `Arduino_DriveBus_Library.h`）。若与微雪官方资料包版本不一致导致编译失败，可在该 workflow 中改为你的 fork 或官方离线包对应的 `--git-url` / 本地拷贝步骤。
+
 ### 依赖库（库管理器 / 手动）
 
 - **GFX Library for Arduino**（SH8601 等）  

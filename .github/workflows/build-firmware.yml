@@ -1,0 +1,68 @@
+# 使用 arduino-cli 在 Ubuntu 上编译 ESP32-S3 固件，并上传 .bin 产物。
+# 板级选项与 README 中「ESP32S3 Dev Module + 16M Flash + 3MB APP + OPI PSRAM + Hardware CDC」一致。
+
+name: Build firmware
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install arduino-cli
+        uses: arduino/setup-arduino-cli@v2
+        with:
+          version: 1.2.0
+
+      - name: Install ESP32 core and libraries
+        run: |
+          set -euxo pipefail
+          arduino-cli version
+          arduino-cli config init \
+            --additional-urls https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
+          arduino-cli core update-index
+          arduino-cli core install esp32:esp32
+
+          arduino-cli lib update-index
+          arduino-cli lib install \
+            "GFX Library for Arduino" \
+            "ArduinoJson" \
+            "SensorLib" \
+            "XPowersLib"
+          # LVGL：Arduino 库管理器当前为 v9.x；若需与本地完全一致的 9.5 可在本步骤改为固定 @ 版本或 git 安装
+          arduino-cli lib install "lvgl"
+          # 触摸 I2C 总线：与微雪资料包中 Arduino_DriveBus 接口一致（含 Arduino_DriveBus_Library.h）
+          arduino-cli lib install --git-url https://github.com/yuttapichai/Arduino_DriveBus
+
+      - name: Compile sketch
+        env:
+          FQBN: >-
+            esp32:esp32:esp32s3:FlashSize=16M,PartitionScheme=app3M_fat9M_16MB,PSRAM=opi,USBMode=hwcdc,CDCOnBoot=cdc
+        run: |
+          set -euxo pipefail
+          arduino-cli compile \
+            --fqbn "${FQBN}" \
+            --warnings all \
+            --output-dir "${GITHUB_WORKSPACE}/build-ci" \
+            "${GITHUB_WORKSPACE}"
+          ls -la "${GITHUB_WORKSPACE}/build-ci"
+
+      - name: Upload firmware artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop_widget-esp32s3-bin
+          path: build-ci/*.bin
+          if-no-files-found: error
