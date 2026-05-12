@@ -47,7 +47,7 @@
 
 触摸库 **Arduino_DriveBus** 通过 `arduino-cli lib install --git-url` 安装（`yuttapichai/Arduino_DriveBus`）。arduino-cli 1.2 起须 `arduino-cli config set library.enable_unsafe_install true`（workflow 已配置）。若与微雪资料包不一致，可改 `--git-url` 或改为 `git clone` 到 `~/Arduino/libraries/Arduino_DriveBus`。
 
-**发版步骤示例**：先改代码 → 提交 → 打标签并推送：`git tag v1.0.1 && git push origin v1.0.1`。下载 Release 或 Actions 产物后，**整片烧录**请用 **`desktop_widget.ino.merged.bin`**（从 **0x0**）：由 CI 在编译后用 **esptool** 合并生成；**Arduino / arduino-cli 默认不会产出该文件**，本地只看到 `bootloader` / `partitions` / `*.ino.bin` 是正常的。详见 [`.github/RELEASE_FLASH.md`](.github/RELEASE_FLASH.md)。
+**发版步骤示例**：先改代码 → 提交 → 打标签并推送：`git tag v1.0.1 && git push origin v1.0.1`。下载 **Release** 或 **Actions Artifacts** 后该刷哪个文件，见 **[「刷机说明」](#刷机说明)**；分区与各 bin 含义见 [`.github/RELEASE_FLASH.md`](.github/RELEASE_FLASH.md)。本地用 Arduino 编译时默认**不会**生成 `*.merged.bin`，只有 bootloader / partitions / `*.ino.bin` 是正常现象。
 
 ### 依赖库（库管理器 / 手动）
 
@@ -57,6 +57,17 @@
 - **XPowersLib**（AXP2101）  
 - **lvgl**（建议 **v9.5**，与工程内 `lv_conf.h` 一致）  
 - **ArduinoJson**  
+
+## 刷机说明
+
+从 **GitHub Releases** 的 **Assets** 或 **Actions** 产物里选文件时，按下面即可（与 Release 页说明一致；**不要**用 Assets 里的 **Source code (zip / tar.gz)** 去刷机，那是仓库源码快照，不是固件）。
+
+| 场景 | 使用文件 | 说明 |
+|------|----------|------|
+| **整片烧录（推荐）** — 新板、量产、救砖、完整换固件 | **`desktop_widget.ino.merged.bin`** | **从地址 `0x0` 烧录**；约 16MB，已包含 bootloader、分区表、应用并 padding 到整片 Flash。 |
+| **串口一键上传** | 不必手选 merged | 用 **Arduino IDE** 或 **`arduino-cli upload`**，按板子与分区自动写入，无需自己拼地址。 |
+| **分拆文件 / 第三方烧录工具** | `desktop_widget.ino.bootloader.bin`、`desktop_widget.ino.partitions.bin`、`desktop_widget.ino.bin` | 各段偏移与注意事项见 [`.github/RELEASE_FLASH.md`](.github/RELEASE_FLASH.md)。也可下载 **`desktop_widget-firmware-<标签>.zip`**（例：`desktop_widget-firmware-v1.0.1.zip`），内含上述 bin 与 **`README_FLASH.md`**。 |
+| **设备已在跑，仅 OTA 升级应用** | **`desktop_widget.ino.bin`** | 在设备 **Web 后台** 的固件上传里选择该文件（只更新应用分区）。 |
 
 ## 首次配网
 
