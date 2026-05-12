@@ -18,7 +18,7 @@
 ```bash
 cd build-ci   # 或你的输出目录，内含三个 bin
 python3 -m esptool --chip esp32s3 merge_bin -o desktop_widget.ino.merged.bin \
-  --flash_mode dio --flash_freq 80m --flash_size 16MB --pad-to-size 16MB \
+  --flash_mode dio --flash_freq 80m --flash_size 16MB --fill-flash-size 16MB \
   0x0 desktop_widget.ino.bootloader.bin \
   0x8000 desktop_widget.ino.partitions.bin \
   0x10000 desktop_widget.ino.bin
